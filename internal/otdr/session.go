@@ -31,11 +31,21 @@ func (s *SessionService) Run(ctx context.Context, spanID, stationID string, leng
 	if err != nil {
 		return Trace{}, err
 	}
-	startedAt := s.now()
 	trace := Trace{
-		ID: s.ids.New("scan"), SpanID: spanID, Generation: snapshot.Generation,
-		Path: snapshot.ActivePath, StartedAt: startedAt.UTC(),
+		ID: s.ids.New("scan"), SpanID: spanID, StationID: stationID, Generation: snapshot.Generation,
+		Path: snapshot.ActivePath, Status: StatusRunning, StartedAt: s.now().UTC(),
 	}
+	s.mu.Lock()
+	s.traces[trace.ID] = trace
+	s.mu.Unlock()
+	completed := false
+	defer func() {
+		if !completed {
+			s.mu.Lock()
+			delete(s.traces, trace.ID)
+			s.mu.Unlock()
+		}
+	}()
 	parts, err := s.scanner.ScanPinned(ctx, snapshot, stationID, chunks)
 	if err != nil {
 		return Trace{}, fmt.Errorf("collect OTDR chunks: %w", err)
@@ -47,9 +57,11 @@ func (s *SessionService) Run(ctx context.Context, spanID, stationID string, leng
 	if len(trace.Generations()) != 1 {
 		return Trace{}, fmt.Errorf("OTDR trace contains multiple topology generations")
 	}
+	trace.Status = StatusCompleted
 	s.mu.Lock()
 	s.traces[trace.ID] = trace
 	s.mu.Unlock()
+	completed = true
 	return trace, nil
 }
 
@@ -58,14 +70,4 @@ func (s *SessionService) Get(id string) (Trace, bool) {
 	defer s.mu.RUnlock()
 	trace, exists := s.traces[id]
 	return trace, exists
-}
-
-func (s *SessionService) List() []Trace {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]Trace, 0, len(s.traces))
-	for _, trace := range s.traces {
-		result = append(result, trace)
-	}
-	return result
 }

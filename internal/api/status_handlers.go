@@ -25,19 +25,6 @@ func (s *Server) getTopology(writer http.ResponseWriter, request *http.Request) 
 	writeJSON(writer, http.StatusOK, snapshot)
 }
 
-func (s *Server) listScans(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, map[string]any{"items": s.services.OTDR.List()})
-}
-
-func (s *Server) getScan(writer http.ResponseWriter, request *http.Request) {
-	trace, exists := s.services.OTDR.Get(chi.URLParam(request, "id"))
-	if !exists {
-		writeJSON(writer, http.StatusNotFound, ErrorResponse{Error: "OTDR scan not found"})
-		return
-	}
-	writeJSON(writer, http.StatusOK, trace)
-}
-
 func (s *Server) listEvents(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	offset, err := parsePageValue(query.Get("offset"), 0)

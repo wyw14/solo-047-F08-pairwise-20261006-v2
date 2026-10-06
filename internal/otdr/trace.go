@@ -9,11 +9,20 @@ import (
 	"github.com/wyw14/cry-103/internal/topology"
 )
 
+type TraceStatus string
+
+const (
+	StatusRunning   TraceStatus = "running"
+	StatusCompleted TraceStatus = "completed"
+)
+
 type Trace struct {
 	ID          string               `json:"id"`
 	SpanID      string               `json:"span_id"`
+	StationID   string               `json:"station_id"`
 	Generation  uint64               `json:"generation"`
 	Path        topology.Path        `json:"path"`
+	Status      TraceStatus          `json:"status"`
 	Chunks      []landing.TraceChunk `json:"chunks"`
 	Location    span.FaultLocation   `json:"location"`
 	StartedAt   time.Time            `json:"started_at"`

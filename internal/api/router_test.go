@@ -25,14 +25,24 @@ import (
 )
 
 func testServer(t *testing.T) *Server {
+	return newTestServer(t, fixedClock{now: time.Date(2026, 8, 24, 3, 0, 0, 0, time.UTC)}, 0)
+}
+
+func newTestServer(t *testing.T, clock platform.Clock, scanDelay time.Duration) *Server {
 	t.Helper()
-	clock := fixedClock{now: time.Date(2026, 8, 24, 3, 0, 0, 0, time.UTC)}
 	ids := platform.UUIDGenerator{}
 	registry := topology.NewRegistry()
 	if _, err := registry.Register("S3", topology.PathPrimary, clock.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := registry.Register("S4", topology.PathPrimary, clock.Now()); err != nil {
+		t.Fatal(err)
+	}
 	target, err := span.New("S3", "S3", 126, clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra, err := span.New("S4", "S4", 80, clock.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,9 +71,9 @@ func testServer(t *testing.T) *Server {
 	acceptance.Register("S3", target, path)
 	services := &Services{
 		Clock: clock, IDs: ids, Journal: store.NewJournal(filepath.Join(t.TempDir(), "events.jsonl")),
-		Spans: map[string]*span.Span{"S3": target}, Routes: map[string]*route.Route{"R-S3": path},
+		Spans: map[string]*span.Span{"S3": target, "S4": extra}, Routes: map[string]*route.Route{"R-S3": path},
 		Repeaters: map[string]*repeater.Repeater{"R07": repeaterAsset}, Topology: registry,
-		OTDR:        otdr.NewSessionService(registry, landing.NewScanner(registry, 0), ids, clock.Now),
+		OTDR:        otdr.NewSessionService(registry, landing.NewScanner(registry, scanDelay), ids, clock.Now),
 		Switchovers: switchover.NewSessionService(drainer, activator, ids, clock.Now, time.Second),
 		Permits:     permitService, Receipts: receipts, Acceptance: acceptance,
 		Telemetry: telemetry.NewIngestor(repository, clock.Now, projector), TelemetryRepository: repository,

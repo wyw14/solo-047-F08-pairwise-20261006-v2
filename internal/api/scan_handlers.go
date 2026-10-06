@@ -39,6 +39,24 @@ func (s *Server) startScan(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusCreated, trace)
 }
 
+func (s *Server) listScans(writer http.ResponseWriter, request *http.Request) {
+	filter, err := parseScanFilter(request.URL.Query())
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, scanPageResponse(filter, s.services.OTDR.Query(filter)))
+}
+
+func (s *Server) getScan(writer http.ResponseWriter, request *http.Request) {
+	trace, exists := s.services.OTDR.Get(chi.URLParam(request, "id"))
+	if !exists {
+		writeJSON(writer, http.StatusNotFound, ErrorResponse{Error: "OTDR scan not found"})
+		return
+	}
+	writeJSON(writer, http.StatusOK, trace)
+}
+
 func (s *Server) getSpan(writer http.ResponseWriter, request *http.Request) {
 	target, err := s.services.Span(chi.URLParam(request, "id"))
 	if err != nil {
