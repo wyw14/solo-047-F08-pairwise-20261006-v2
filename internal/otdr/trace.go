@@ -9,15 +9,45 @@ import (
 	"github.com/wyw14/cry-103/internal/topology"
 )
 
+// ScanState classifies where a scan is in its lifecycle. Running scans are
+// registered before collection starts so they are visible while in progress.
+type ScanState string
+
+const (
+	// StateRunning means the scan has been registered but collection is not finished.
+	StateRunning ScanState = "running"
+	// StateCompleted means the trace was assembled and persisted successfully.
+	StateCompleted ScanState = "completed"
+	// StateFailed means collection or assembly failed; Error explains why.
+	StateFailed ScanState = "failed"
+)
+
 type Trace struct {
 	ID          string               `json:"id"`
 	SpanID      string               `json:"span_id"`
+	StationID   string               `json:"station_id"`
 	Generation  uint64               `json:"generation"`
 	Path        topology.Path        `json:"path"`
-	Chunks      []landing.TraceChunk `json:"chunks"`
+	State       ScanState            `json:"state"`
+	Chunks      []landing.TraceChunk `json:"chunks,omitempty"`
 	Location    span.FaultLocation   `json:"location"`
 	StartedAt   time.Time            `json:"started_at"`
-	CompletedAt time.Time            `json:"completed_at"`
+	CompletedAt *time.Time           `json:"completed_at,omitempty"`
+	// Error holds the failure reason and is only populated for failed scans.
+	Error string `json:"error,omitempty"`
+	// sequence is the monotonic registration order used as a tie breaker for
+	// equal StartedAt values in keyset pagination; never serialized.
+	sequence uint64 `json:"-"`
+}
+
+// Snapshot returns a copy of the trace safe for the caller to retain while the
+// service mutates the stored entry.
+func (t Trace) Snapshot() Trace {
+	trace := t
+	if t.Chunks != nil {
+		trace.Chunks = append([]landing.TraceChunk(nil), t.Chunks...)
+	}
+	return trace
 }
 
 func assemble(trace Trace, chunks []landing.TraceChunk, lengthKM float64, completedAt time.Time) (Trace, error) {
@@ -39,7 +69,8 @@ func assemble(trace Trace, chunks []landing.TraceChunk, lengthKM float64, comple
 	}
 	trace.Chunks = append([]landing.TraceChunk(nil), chunks...)
 	trace.Location = location
-	trace.CompletedAt = completedAt.UTC()
+	completed := completedAt.UTC()
+	trace.CompletedAt = &completed
 	return trace, nil
 }
 

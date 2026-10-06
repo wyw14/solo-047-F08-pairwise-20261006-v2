@@ -1,10 +1,13 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/wyw14/cry-103/internal/otdr"
 )
 
 func (s *Server) systemStatus(writer http.ResponseWriter, _ *http.Request) {
@@ -25,8 +28,52 @@ func (s *Server) getTopology(writer http.ResponseWriter, request *http.Request) 
 	writeJSON(writer, http.StatusOK, snapshot)
 }
 
-func (s *Server) listScans(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, map[string]any{"items": s.services.OTDR.List()})
+func (s *Server) listScans(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+	filter := otdr.ScanFilter{
+		SpanID:    query.Get("span_id"),
+		StationID: query.Get("station_id"),
+		State:     otdr.ScanState(query.Get("state")),
+	}
+	if raw := query.Get("generation"); raw != "" {
+		generation, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || generation == 0 {
+			writeError(writer, http.StatusBadRequest, fmt.Errorf("invalid generation: %s", raw))
+			return
+		}
+		filter.Generation = generation
+	}
+	if raw := query.Get("from"); raw != "" {
+		from, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, fmt.Errorf("invalid from timestamp: %s", raw))
+			return
+		}
+		filter.From = &from
+	}
+	if raw := query.Get("to"); raw != "" {
+		to, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, fmt.Errorf("invalid to timestamp: %s", raw))
+			return
+		}
+		filter.To = &to
+	}
+	limit := 0
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeError(writer, http.StatusBadRequest, fmt.Errorf("invalid scan page limit: %s", raw))
+			return
+		}
+		limit = parsed
+	}
+	page, err := s.services.OTDR.Query(filter, query.Get("cursor"), limit)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, page)
 }
 
 func (s *Server) getScan(writer http.ResponseWriter, request *http.Request) {
